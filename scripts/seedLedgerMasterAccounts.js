@@ -1,51 +1,55 @@
 // scripts/seedLedgerMasterAccounts.js
 require('dotenv').config();
+const mongoose = require('mongoose');
 const connectDB = require('../src/db');
-const EscrowWallet = require('../src/models/EscrowWallet');
-const tatum = require('../src/tatumLedger');
+const LedgerAccount = require('../src/models/LedgerAccount');
 
-(async () => {
-  try {
-    await connectDB();
-    console.log('Connected to MongoDB');
+async function seed() {
+  await connectDB();
+  console.log('Connected to MongoDB');
 
-    const currency = process.env.TATUM_VA_CURRENCY || 'USDT';
-    const { fundingAccount, escrowAccount, feeAccount } = await tatum.ensureSystemAccounts(currency);
+  const ledgerType =
+    process.env.USE_MOCK_LEDGER === 'true' ? 'MOCK' : 'TATUM';
 
-    const upsert = async (role, acc) => {
-      const label = `VA_${role}_${currency}`;
-      const existing = await EscrowWallet.findOne({ role, network: currency });
-      const ledgerAccountId = acc.id || acc.accountId || acc.account;
-      const address = acc.address || (acc.addresses && acc.addresses[0]) || null;
-      if (existing) {
-        existing.ledgerAccountId = ledgerAccountId;
-        existing.address = address || existing.address;
-        existing.label = label;
-        await existing.save();
-        return existing;
-      } else {
-        const doc = await EscrowWallet.create({
-          network: currency,
-          role,
-          ledgerAccountId,
-          address,
-          privateKey: null,
-          label,
-        });
-        return doc;
-      }
-    };
+  const systemAccounts = [
+    {
+      accountId: 'SYSTEM_ESCROW',
+      role: 'SYSTEM_ESCROW',
+    },
+    {
+      accountId: 'SYSTEM_FEE',
+      role: 'SYSTEM_FEE',
+    },
+  ];
 
-    const f1 = await upsert('FUNDING', fundingAccount);
-    const f2 = await upsert('ESCROW_MASTER', escrowAccount);
-    const f3 = await upsert('FEE', feeAccount);
+  for (const acc of systemAccounts) {
+    const exists = await LedgerAccount.findOne({
+      role: acc.role,
+      ledgerType,
+    });
 
-    console.log('Seeded/updated system accounts:');
-    console.log({ FUNDING: f1, ESCROW_MASTER: f2, FEE: f3 });
+    if (exists) {
+      console.log(`ℹ️ ${acc.role} already exists`);
+      continue;
+    }
 
-    process.exit(0);
-  } catch (err) {
-    console.error('Error:', err);
-    process.exit(1);
+    await LedgerAccount.create({
+      accountId: acc.accountId,
+      role: acc.role,
+      ledgerType,
+      currency: 'USDT',
+      balance: 0,
+      isSystem: true,
+    });
+
+    console.log(`✅ Created ${acc.role}`);
   }
-})();
+
+  console.log('✅ System ledger accounts ready');
+  process.exit(0);
+}
+
+seed().catch((err) => {
+  console.error('❌ Seed failed:', err);
+  process.exit(1);
+});
