@@ -1,5 +1,12 @@
 node_modules/
+node_modules*.zip
 .env
 .env.*
-npm-debug.log
+!.env.example
+*.pem
+*.key
+*.p12
+*.log
+npm-debug.log*
 .DS_Store
+coverage/
